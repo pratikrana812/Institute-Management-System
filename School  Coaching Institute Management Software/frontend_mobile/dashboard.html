@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Student Dashboard</title>
+    <link rel="stylesheet" href="css/mobile.css">
+    <style>
+        .page-content { display: none; }
+        .page-content.active { display: block; }
+    </style>
+</head>
+<body>
+
+    <header class="app-header">
+        <h2>InstiManage</h2>
+        <span class="logout-icon" onclick="AppAuth.logout()">⎋</span>
+    </header>
+
+    <div class="container">
+        
+        <!-- Dashboard Page -->
+        <div id="page-dashboard" class="page-content active">
+            <div class="greeting">
+                <h3>Hello, <span id="studentName">Student</span>!</h3>
+                <p>Welcome to your portal</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="color:var(--success)">📅</div>
+                    <div class="stat-value" id="dash-attendance">--</div>
+                    <div class="stat-label">Present Days</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="color:var(--warning)">💰</div>
+                    <div class="stat-value" id="dash-due">--</div>
+                    <div class="stat-label">Fee Due</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Recent Notifications</div>
+                <div class="list-item">
+                    <div class="item-main">Welcome back!</div>
+                    <div class="item-sub">Check your latest schedule</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Attendance Page -->
+        <div id="page-attendance" class="page-content">
+            <div class="greeting">
+                <h3>My Attendance</h3>
+            </div>
+            <div class="card">
+                <div id="attendanceList">
+                    <p style="text-align: center; color: #888;">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fees Page -->
+        <div id="page-fees" class="page-content">
+            <div class="greeting">
+                <h3>Fee Structure</h3>
+            </div>
+            <div id="feesList">
+                <p style="text-align: center; color: #888;">Loading...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+        <a href="#" class="nav-item active" onclick="switchTab('dashboard', this)">
+            <span class="nav-icon">📊</span>
+            Home
+        </a>
+        <a href="#" class="nav-item" onclick="switchTab('attendance', this)">
+            <span class="nav-icon">📅</span>
+            Attendance
+        </a>
+        <a href="#" class="nav-item" onclick="switchTab('fees', this)">
+            <span class="nav-icon">💳</span>
+            Fees
+        </a>
+    </nav>
+
+    <script src="js/app.js"></script>
+    <script>
+        const user = AppAuth.check();
+        const studentId = user.student_id;
+        document.getElementById('studentName').textContent = user.name || user.username;
+
+        function switchTab(tabId, el) {
+            // Update active state on nav
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            el.classList.add('active');
+
+            // Show page
+            document.querySelectorAll('.page-content').forEach(page => page.classList.remove('active'));
+            document.getElementById('page-' + tabId).classList.add('active');
+            
+            // Load content lazy
+            if(tabId === 'attendance') loadAttendance();
+            if(tabId === 'fees') loadFees();
+        }
+
+        async function loadDash() {
+            try {
+                // Fetch attendance for stat
+                const att = await StudentData.getAttendance(studentId);
+                const presents = att.filter(a => a.status === 'present').length;
+                document.getElementById('dash-attendance').textContent = presents;
+
+                // Fetch fees
+                const fees = await StudentData.getFees(studentId);
+                let due = 0;
+                fees.forEach(f => { due += (f.total_amount - f.paid_amount); });
+                document.getElementById('dash-due').textContent = '$' + due.toFixed(2);
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadAttendance() {
+            const list = document.getElementById('attendanceList');
+            try {
+                const att = await StudentData.getAttendance(studentId);
+                if(att.length === 0) {
+                    list.innerHTML = '<p style="text-align:center; color:#888;">No attendance records found.</p>';
+                    return;
+                }
+                let html = '';
+                att.forEach(a => {
+                    html += `
+                        <div class="list-item">
+                            <div>
+                                <div class="item-main">${a.date}</div>
+                            </div>
+                            <div>
+                                <span class="badge badge-${a.status}">${a.status.toUpperCase()}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                list.innerHTML = html;
+            } catch(e) {
+                list.innerHTML = '<p style="color:red">Error loading attendance.</p>';
+            }
+        }
+
+        async function loadFees() {
+            const list = document.getElementById('feesList');
+            try {
+                const fees = await StudentData.getFees(studentId);
+                if(fees.length === 0) {
+                    list.innerHTML = '<p style="text-align:center; color:#888;">No fee records found.</p>';
+                    return;
+                }
+                let html = '';
+                fees.forEach(f => {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">
+                                Fee Overview 
+                                <span class="badge badge-${f.status}">${f.status.toUpperCase()}</span>
+                            </div>
+                            <div class="list-item">
+                                <span class="item-sub">Total Amount</span>
+                                <span class="item-main">$${f.total_amount.toFixed(2)}</span>
+                            </div>
+                            <div class="list-item">
+                                <span class="item-sub">Paid Amount</span>
+                                <span class="item-main" style="color:var(--success)">$${f.paid_amount.toFixed(2)}</span>
+                            </div>
+                            <div class="list-item">
+                                <span class="item-sub">Due Amount</span>
+                                <span class="item-main" style="color:var(--danger)">$${(f.total_amount - f.paid_amount).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                list.innerHTML = html;
+            } catch(e) {
+                list.innerHTML = '<p style="color:red">Error loading fees.</p>';
+            }
+        }
+
+        // Initialize dash on load
+        loadDash();
+    </script>
+</body>
+</html>

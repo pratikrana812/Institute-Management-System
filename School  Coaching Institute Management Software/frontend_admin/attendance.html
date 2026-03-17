@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Attendance - Institute Management</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .attendance-actions {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .status-btn {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            background: white;
+            transition: 0.2s;
+        }
+        .status-btn.present { border-color: var(--success-color); color: var(--success-color); }
+        .status-btn.present:hover, .status-btn.present.active { background: var(--success-color); color: white; }
+        
+        .status-btn.absent { border-color: var(--danger-color); color: var(--danger-color); }
+        .status-btn.absent:hover, .status-btn.absent.active { background: var(--danger-color); color: white; }
+        
+        .status-btn.late { border-color: var(--warning-color); color: var(--warning-color); }
+        .status-btn.late:hover, .status-btn.late.active { background: var(--warning-color); color: white; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h3>InstiManage</h3>
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="index.html"><i>📊</i> Dashboard</a></li>
+                <li><a href="students.html"><i>👩‍🎓</i> Students</a></li>
+                <li><a href="fees.html"><i>💳</i> Fees</a></li>
+                <li><a href="attendance.html" class="active"><i>📅</i> Attendance</a></li>
+                <li><a href="exams.html"><i>📝</i> Exams</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <div class="header-title">
+                    <h2>Daily Attendance</h2>
+                </div>
+                <div class="header-user">
+                    <span id="adminName"></span>
+                    <button class="logout-btn" onclick="Auth.logout()">Logout</button>
+                </div>
+            </header>
+
+            <div class="card">
+                <div class="card-header" style="flex-wrap: wrap; gap: 15px;">
+                    <h3>Mark Attendance</h3>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="date" id="attendanceDate" class="form-control" style="width:auto;">
+                        <button class="btn btn-primary" onclick="loadStudentsForAttendance()" style="width:auto">Load Students</button>
+                    </div>
+                </div>
+                
+                <div id="attendanceAlert" style="padding: 10px; margin-bottom: 15px; border-radius: 5px; display: none;"></div>
+
+                <div class="table-responsive">
+                    <table id="attendanceTable">
+                        <thead>
+                            <tr>
+                                <th>Student ID</th>
+                                <th>Name</th>
+                                <th>Class</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="5" align="center">Select a date and load students to mark attendance.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        const user = Auth.check();
+        document.getElementById('adminName').textContent = user.username;
+
+        // Set today's date
+        document.getElementById('attendanceDate').valueAsDate = new Date();
+
+        async function loadStudentsForAttendance() {
+            const dateStr = document.getElementById('attendanceDate').value;
+            if(!dateStr) return;
+
+            try {
+                // Fetch all students
+                const students = await Students.getAll();
+                // Fetch already marked attendance for this date
+                const markedToday = await Attendance.getAll(dateStr);
+                
+                const markedMap = {};
+                markedToday.forEach(m => {
+                    markedMap[m.student_id] = m.status;
+                });
+
+                const tbody = document.querySelector('#attendanceTable tbody');
+                tbody.innerHTML = '';
+
+                if(students.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" align="center">No students found.</td></tr>';
+                    return;
+                }
+
+                students.forEach(student => {
+                    const status = markedMap[student.student_id] || '';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>#${student.student_id}</td>
+                        <td><strong>${student.name}</strong></td>
+                        <td>${student.class}</td>
+                        <td><strong id="status-text-${student.student_id}">${status ? status.toUpperCase() : 'Not Marked'}</strong></td>
+                        <td>
+                            <div class="attendance-actions">
+                                <button class="status-btn present ${status === 'present' ? 'active' : ''}" onclick="mark(${student.student_id}, 'present', this)">Present</button>
+                                <button class="status-btn absent ${status === 'absent' ? 'active' : ''}" onclick="mark(${student.student_id}, 'absent', this)">Absent</button>
+                                <button class="status-btn late ${status === 'late' ? 'active' : ''}" onclick="mark(${student.student_id}, 'late', this)">Late</button>
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+            } catch(error) {
+                console.error(error);
+            }
+        }
+
+        async function mark(studentId, status, btnElement) {
+            const dateStr = document.getElementById('attendanceDate').value;
+            const alertBox = document.getElementById('attendanceAlert');
+            
+            try {
+                await Attendance.mark(studentId, dateStr, status);
+                
+                // Update UI visually
+                const rowBtns = btnElement.parentElement.querySelectorAll('.status-btn');
+                rowBtns.forEach(b => b.classList.remove('active'));
+                btnElement.classList.add('active');
+                
+                document.getElementById(`status-text-${studentId}`).textContent = status.toUpperCase();
+
+                // Show success
+                alertBox.textContent = "Attendance marked successfully.";
+                alertBox.style.display = "block";
+                alertBox.style.backgroundColor = "#d4edda";
+                alertBox.style.color = "#155724";
+                
+                setTimeout(() => { alertBox.style.display = 'none'; }, 2000);
+            } catch (error) {
+                alertBox.textContent = error.message;
+                alertBox.style.display = "block";
+                alertBox.style.backgroundColor = "#f8d7da";
+                alertBox.style.color = "#721c24";
+            }
+        }
+    </script>
+</body>
+</html>
